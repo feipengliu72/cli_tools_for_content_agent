@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pdf2md"
+version = "0.1.0"
+description = "Convert PDF files to Markdown text via PyMuPDF"
+requires-python = ">=3.10"
+dependencies = [
+    "typer>=0.12",
+    "pymupdf>=1.24",
+]
+
+[project.scripts]
+pdf2md = "pdf2md.cli:app"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["pdf2md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
