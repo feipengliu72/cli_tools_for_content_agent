@@ -47,7 +47,8 @@ def test_extract_text_rejects_non_pdf(tmp_path: Path) -> None:
 
 
 def test_convert_writes_file_and_json_fields(tmp_path: Path) -> None:
-    pdf = _make_pdf(tmp_path / "sample.pdf", "Page one content enough for local")
+    pdf = _make_pdf(tmp_path / "sample.pdf",
+                    "Page one content that is long enough to pass the local quality check here")
     out = tmp_path / "out" / "sample.md"
 
     result = convert(pdf, out, ocr=False)
@@ -62,7 +63,8 @@ def test_convert_writes_file_and_json_fields(tmp_path: Path) -> None:
 
 
 def test_cli_success_prints_json(tmp_path: Path) -> None:
-    pdf = _make_pdf(tmp_path / "cli.pdf", "CLI text with enough characters here")
+    pdf = _make_pdf(tmp_path / "cli.pdf",
+                    "CLI text with enough characters here to pass the local quality check")
     out = tmp_path / "cli.md"
 
     result = runner.invoke(
@@ -97,23 +99,6 @@ def test_cli_invalid_pdf_fails(tmp_path: Path) -> None:
     assert "不是有效的 PDF" in result.stderr
     assert not out.exists()
 
-
-def test_cli_rejects_no_ocr_with_force_ocr(tmp_path: Path) -> None:
-    pdf = _make_pdf(tmp_path / "a.pdf")
-    out = tmp_path / "a.md"
-    result = runner.invoke(
-        app,
-        [
-            "--input",
-            str(pdf),
-            "--output",
-            str(out),
-            "--no-ocr",
-            "--force-ocr",
-        ],
-    )
-    assert result.exit_code == 1
-    assert "--no-ocr" in result.stderr and "--force-ocr" in result.stderr
 
 
 def test_is_pdf_text_insufficient_thresholds() -> None:
@@ -177,30 +162,14 @@ def test_convert_ocr_fallback_uses_mineru(tmp_path: Path) -> None:
         result = convert(pdf, out, ocr=True)
 
     assert result["parser"] == "mineru_vlm_ocr"
-    assert "fallback_reason" in result
     assert out.read_text(encoding="utf-8") == "# OCR result\n"
     parse.assert_called_once()
 
 
-def test_convert_force_ocr_skips_local(tmp_path: Path) -> None:
-    pdf = _make_pdf(tmp_path / "rich.pdf", "Plenty of local text here for sure")
-    out = tmp_path / "forced.md"
-
-    with (
-        patch("pdf2md.fallback.load_mineru_config") as load_cfg,
-        patch("pdf2md.fallback.parse_pdf", return_value="# forced\n") as parse,
-    ):
-        load_cfg.return_value = MagicMock()
-        result = convert(pdf, out, force_ocr=True)
-
-    assert result["parser"] == "mineru_vlm_ocr"
-    assert result["fallback_reason"] == "force_ocr"
-    parse.assert_called_once()
-
-
-def test_convert_no_ocr_keeps_insufficient_local(tmp_path: Path) -> None:
-    pdf = _make_emptyish_pdf(tmp_path / "blank.pdf")
-    out = tmp_path / "blank.md"
+def test_convert_no_ocr_keeps_local(tmp_path: Path) -> None:
+    pdf = _make_pdf(tmp_path / "rich.pdf",
+                    "Plenty of local text here for sure to pass the quality threshold check")
+    out = tmp_path / "local.md"
 
     with patch("pdf2md.fallback.parse_pdf") as parse:
         result = convert(pdf, out, ocr=False)
@@ -210,7 +179,25 @@ def test_convert_no_ocr_keeps_insufficient_local(tmp_path: Path) -> None:
     assert out.exists()
 
 
-def test_ocr_needed_without_config_errors(tmp_path: Path) -> None:
+
+def test_ocr_failed_falls_back_to_local(tmp_path: Path) -> None:
+    pdf = _make_pdf(tmp_path / "blank.pdf",
+                    "Some text that can be extracted locally and is long enough to pass quality check")
+    out = tmp_path / "blank.md"
+
+    with patch(
+        "pdf2md.fallback.load_mineru_config",
+        side_effect=ValueError("config.json 中未配置 providers.mineru.api_key"),
+    ):
+        result = convert(pdf, out, ocr=True)
+
+    assert result["parser"] == "local"
+    assert result["fallback_reason"] == "ocr_failed_fallback_to_local"
+    assert out.exists()
+
+
+def test_both_ocr_and_local_fail(tmp_path: Path) -> None:
+    """When OCR errors and local text is insufficient → Pdf2mdError."""
     pdf = _make_emptyish_pdf(tmp_path / "blank.pdf")
     out = tmp_path / "blank.md"
 
@@ -218,5 +205,5 @@ def test_ocr_needed_without_config_errors(tmp_path: Path) -> None:
         "pdf2md.fallback.load_mineru_config",
         side_effect=ValueError("config.json 中未配置 providers.mineru.api_key"),
     ):
-        with pytest.raises(Pdf2mdError, match="需要 OCR"):
+        with pytest.raises(Pdf2mdError, match="本地解析文本不足"):
             convert(pdf, out, ocr=True)

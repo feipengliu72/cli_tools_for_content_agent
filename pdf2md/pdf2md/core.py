@@ -576,12 +576,12 @@ def convert(
     output_path: Path,
     *,
     ocr: bool = True,
-    force_ocr: bool = False,
 ) -> dict:
     """Extract PDF text and write it to output_path. Returns a result dict.
 
-    OCR fallback is on by default (MinerU via repo config.json). Use
-    ``ocr=False`` / ``force_ocr=True`` for ``--no-ocr`` / ``--force-ocr``.
+    OCR-first strategy (MinerU via repo config.json): try OCR by default;
+    fall back to local PyMuPDF parsing on OCR failure. Use ``ocr=False``
+    for ``--no-ocr``.
     """
     from pdf2md.fallback import extract_text as extract_with_fallback
 
@@ -589,7 +589,9 @@ def convert(
     output_path = Path(output_path)
 
     text, meta = extract_with_fallback(
-        input_path, ocr=ocr, force_ocr=force_ocr
+        input_path,
+        ocr=ocr,
+        output_dir=output_path.parent.resolve(),
     )
 
     try:

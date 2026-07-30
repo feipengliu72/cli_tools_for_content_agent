@@ -29,28 +29,20 @@ def main(
     ],
     no_ocr: Annotated[
         bool,
-        typer.Option("--no-ocr", help="禁用 MinerU OCR fallback，仅本地解析"),
-    ] = False,
-    force_ocr: Annotated[
-        bool,
-        typer.Option("--force-ocr", help="跳过本地判定，强制使用 MinerU OCR"),
+        typer.Option("--no-ocr", help="禁用 MinerU OCR，仅本地解析"),
     ] = False,
 ) -> None:
     """将 PDF 文件转换为 Markdown 文本并保存到指定路径。
 
-    默认在本地文本不足或扫描件占比过高时自动 fallback 到 MinerU OCR
+    默认使用 MinerU OCR 解析；OCR 失败时自动回退到本地 PyMuPDF 解析
     （API 从仓库根目录 config.json 的 providers.mineru 读取）。
     """
-    if no_ocr and force_ocr:
-        typer.echo("错误: --no-ocr 与 --force-ocr 不能同时使用", err=True)
-        raise typer.Exit(code=1)
 
     try:
         result = convert(
             input,
             output,
             ocr=not no_ocr,
-            force_ocr=force_ocr,
         )
     except Pdf2mdError as e:
         typer.echo(str(e), err=True)

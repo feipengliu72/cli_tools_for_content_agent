@@ -1,4 +1,4 @@
-"""Local parse first; fall back to MinerU OCR when text is insufficient."""
+"""OCR-first strategy; fall back to local parsing when OCR fails."""
 
 from __future__ import annotations
 
@@ -18,46 +18,62 @@ def extract_text(
     path: Path,
     *,
     ocr: bool = True,
-    force_ocr: bool = False,
+    output_dir: Path | None = None,
 ) -> tuple[str, dict]:
-    """Extract Markdown from PDF with optional MinerU OCR fallback.
+    """Extract Markdown from PDF with OCR-first fallback strategy.
 
     Returns ``(text, meta)`` where meta contains ``parser`` and optionally
     ``fallback_reason``.
 
-    - ``ocr=True`` (default): local first; OCR if text looks insufficient.
+    - Default: MinerU OCR first; fall back to local PyMuPDF on OCR error.
     - ``ocr=False``: local only (``--no-ocr``).
-    - ``force_ocr=True``: skip local quality check, always MinerU (``--force-ocr``).
+    - ``output_dir``: if set, MinerU ZIP images are extracted to
+      ``<output_dir>/images/``.
+
+    Raises Pdf2mdError when OCR fails and local extraction is also
+    insufficient.
     """
     path = Path(path)
 
-    if force_ocr:
-        return _run_mineru(path, fallback_reason="force_ocr")
-
-    local_text = extract_text_local(path)
     if not ocr:
+        local_text = extract_text_local(path)
+        _ensure_local_quality(local_text, path, ocr_attempted=False)
         return local_text, {"parser": "local"}
 
+    # --- OCR-first strategy ------------------------------------------------
+    try:
+        return _run_mineru(path, output_dir=output_dir)
+    except Pdf2mdError:
+        # MinerU failed → fall back to local; error if local is also bad.
+        local_text = extract_text_local(path)
+        _ensure_local_quality(local_text, path, ocr_attempted=True)
+        return local_text, {
+            "parser": "local",
+            "fallback_reason": "ocr_failed_fallback_to_local",
+        }
+
+
+def _ensure_local_quality(
+    text: str, path: Path, *, ocr_attempted: bool
+) -> None:
+    """Raise Pdf2mdError when local extraction yields insufficient text."""
     page_count, scanned_ratio = pdf_page_stats(path)
-    if not is_pdf_text_insufficient(local_text, page_count, scanned_ratio):
-        return local_text, {"parser": "local"}
+    if is_pdf_text_insufficient(text, page_count, scanned_ratio):
+        reason = format_pdf_insufficient_reason(text, page_count, scanned_ratio)
+        suffix = "，OCR 也不可用" if ocr_attempted else ""
+        raise Pdf2mdError(f"本地解析文本不足 ({reason}){suffix}")
 
-    reason = format_pdf_insufficient_reason(local_text, page_count, scanned_ratio)
-    return _run_mineru(path, fallback_reason=reason)
 
-
-def _run_mineru(path: Path, fallback_reason: str) -> tuple[str, dict]:
+def _run_mineru(
+    path: Path,
+    output_dir: Path | None = None,
+) -> tuple[str, dict]:
     try:
         config = load_mineru_config()
     except ValueError as e:
-        raise Pdf2mdError(f"PDF 需要 OCR（{fallback_reason}），但 {e}") from e
-
+        raise Pdf2mdError(f"MinerU 配置错误: {e}") from e
     try:
-        md = parse_pdf(path, config)
+        md = parse_pdf(path, config, output_dir=output_dir)
     except MinerUError as e:
         raise Pdf2mdError(f"MinerU OCR 失败: {e}") from e
-
-    return md, {
-        "parser": "mineru_vlm_ocr",
-        "fallback_reason": fallback_reason,
-    }
+    return md, {"parser": "mineru_vlm_ocr"}
