@@ -27,10 +27,23 @@ def main(
         Path,
         typer.Option("--output", help="输出 Markdown 文件路径", dir_okay=False),
     ],
+    no_ocr: Annotated[
+        bool,
+        typer.Option("--no-ocr", help="禁用 MinerU OCR，仅本地解析"),
+    ] = False,
 ) -> None:
-    """将 PDF 文件转换为 Markdown 文本并保存到指定路径。"""
+    """将 PDF 文件转换为 Markdown 文本并保存到指定路径。
+
+    默认使用 MinerU OCR 解析；OCR 失败时自动回退到本地 PyMuPDF 解析
+    （API 从仓库根目录 config.json 的 providers.mineru 读取）。
+    """
+
     try:
-        result = convert(input, output)
+        result = convert(
+            input,
+            output,
+            ocr=not no_ocr,
+        )
     except Pdf2mdError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(code=1) from e
