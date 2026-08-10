@@ -542,8 +542,8 @@ class Pdf2mdError(Exception):
     """Domain error for pdf2md conversion failures."""
 
 
-def extract_text_local(path: Path) -> str:
-    """Extract Markdown text from a PDF (layout-aware via PyMuPDF only)."""
+def extract_text(path: Path) -> str:
+    """Extract Markdown text from a PDF (layout-aware via PyMuPDF)."""
     path = Path(path)
 
     try:
@@ -566,33 +566,12 @@ def extract_text_local(path: Path) -> str:
         raise Pdf2mdError(f"PDF 解析失败: {e}") from e
 
 
-def extract_text(path: Path) -> str:
-    """Extract Markdown from a PDF (local parse; callers needing OCR use fallback)."""
-    return extract_text_local(path)
-
-
-def convert(
-    input_path: Path,
-    output_path: Path,
-    *,
-    ocr: bool = True,
-) -> dict:
-    """Extract PDF text and write it to output_path. Returns a result dict.
-
-    OCR-first strategy (MinerU via repo config.json): try OCR by default;
-    fall back to local PyMuPDF parsing on OCR failure. Use ``ocr=False``
-    for ``--no-ocr``.
-    """
-    from pdf2md.fallback import extract_text as extract_with_fallback
-
+def convert(input_path: Path, output_path: Path) -> dict:
+    """Extract PDF text and write it to output_path. Returns a result dict."""
     input_path = Path(input_path)
     output_path = Path(output_path)
 
-    text, meta = extract_with_fallback(
-        input_path,
-        ocr=ocr,
-        output_dir=output_path.parent.resolve(),
-    )
+    text = extract_text(input_path)
 
     try:
         if output_path.parent and str(output_path.parent) not in ("", "."):
@@ -601,13 +580,9 @@ def convert(
     except OSError as e:
         raise Pdf2mdError(f"写入输出文件失败: {e}") from e
 
-    result = {
+    return {
         "ok": True,
         "input": str(input_path),
         "output": str(output_path),
         "chars": len(text),
-        "parser": meta.get("parser", "local"),
     }
-    if meta.get("fallback_reason"):
-        result["fallback_reason"] = meta["fallback_reason"]
-    return result
