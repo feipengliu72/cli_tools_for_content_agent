@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import time
+import warnings
 import zipfile
 from pathlib import Path
 
@@ -16,8 +17,14 @@ class MinerUError(Exception):
     """MinerU OCR / API failure."""
 
 
-def parse_pdf(path: Path, config: MinerUConfig) -> str:
-    """Upload PDF to MinerU, wait for parse, return Markdown text."""
+def parse_pdf(
+    path: Path, config: MinerUConfig, output_dir: Path | None = None
+) -> str:
+    """Upload PDF to MinerU, wait for parse, return Markdown text.
+
+    When ``output_dir`` is given, image files from the result ZIP are
+    extracted to ``<output_dir>/images/``.
+    """
     path = Path(path)
     file_name = path.name
     if not file_name:
@@ -28,7 +35,7 @@ def parse_pdf(path: Path, config: MinerUConfig) -> str:
         batch_id, upload_url = _request_upload_url(client, config, file_name)
         _upload_file(client, path, upload_url)
         zip_url = _poll_batch_result(client, config, batch_id, file_name)
-        return _download_and_extract_md(client, zip_url)
+        return _download_and_extract_md(client, zip_url, output_dir)
 
 
 def _ensure_api_ok(payload: dict, http_status: int, action: str) -> None:
@@ -174,7 +181,9 @@ def _poll_batch_result(
         raise MinerUError(f"MinerU 未知任务状态: {state}")
 
 
-def _download_and_extract_md(client: httpx.Client, zip_url: str) -> str:
+def _download_and_extract_md(
+    client: httpx.Client, zip_url: str, output_dir: Path | None = None
+) -> str:
     try:
         resp = client.get(zip_url)
     except httpx.HTTPError as e:
@@ -183,7 +192,39 @@ def _download_and_extract_md(client: httpx.Client, zip_url: str) -> str:
     if resp.status_code >= 400:
         raise MinerUError(f"下载 MinerU 结果失败: HTTP {resp.status_code}")
 
+    if output_dir is not None:
+        _extract_images(resp.content, output_dir)
     return extract_full_md_from_zip(resp.content)
+
+
+_IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
+
+
+def _extract_images(data: bytes, output_dir: Path) -> None:
+    """Extract images from the MinerU result ZIP into <output_dir>/images/.
+
+    The ZIP nests each file's assets under one per-file folder; that top
+    folder is dropped so the markdown's relative ``images/...`` links
+    resolve. Failures only warn — image extraction is a side effect and
+    must not sink an otherwise successful conversion.
+    """
+    img_dir = Path(output_dir)
+    print(f"提取 MinerU 图片到 {img_dir}")
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            for name in archive.namelist():
+                if not name.lower().endswith(_IMAGE_SUFFIXES):
+                    continue
+                parts = Path(name).parts
+                if any(part in ("..", "") for part in parts):
+                    continue  # zip-slip guard
+                if len(parts) > 1 and parts[0] != "images":
+                    parts = parts[1:]
+                target = img_dir.joinpath(*parts)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(archive.read(name))
+    except (OSError, zipfile.BadZipFile) as e:
+        warnings.warn(f"提取 MinerU 图片失败: {e}", RuntimeWarning)
 
 
 def extract_full_md_from_zip(data: bytes) -> str:
