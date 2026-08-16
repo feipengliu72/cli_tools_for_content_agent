@@ -65,4 +65,6 @@ def _run_mineru(
         md = parse_pdf(path, config, output_dir=output_dir)
     except MinerUError as e:
         raise Pdf2mdError(f"MinerU OCR 失败: {e}") from e
+    except Exception as e:  # noqa: BLE001 — 非预期异常同样转为领域错误，保证 CLI 打印完整信息
+        raise Pdf2mdError(f"MinerU OCR 失败 ({type(e).__name__}): {e}") from e
     return md, {"parser": "mineru_vlm_ocr"}

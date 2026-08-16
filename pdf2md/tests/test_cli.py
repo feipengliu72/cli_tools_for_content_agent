@@ -15,7 +15,7 @@ from typer.testing import CliRunner
 from pdf2md.cli import app
 from pdf2md.config import load_mineru_config
 from pdf2md.core import Pdf2mdError, convert, extract_text
-from pdf2md.mineru import extract_full_md_from_zip
+from pdf2md.mineru import MinerUError, extract_full_md_from_zip
 from pdf2md.quality import is_pdf_text_insufficient
 
 runner = CliRunner()
@@ -136,6 +136,22 @@ def test_load_mineru_config_missing_key(tmp_path: Path) -> None:
         load_mineru_config(cfg)
 
 
+def test_load_mineru_config_malformed_json(tmp_path: Path) -> None:
+    """A corrupt config.json must surface the JSON parse error, not
+    masquerade as a missing api_key."""
+    cfg = tmp_path / "config.json"
+    cfg.write_text("{not json", encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON 解析失败"):
+        load_mineru_config(cfg)
+
+
+def test_load_mineru_config_non_object_entry(tmp_path: Path) -> None:
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({"providers": {"mineru": "tok-123"}}), encoding="utf-8")
+    with pytest.raises(ValueError, match="必须是对象"):
+        load_mineru_config(cfg)
+
+
 def test_extract_full_md_from_zip() -> None:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
@@ -143,6 +159,15 @@ def test_extract_full_md_from_zip() -> None:
         zf.writestr("full.md", "# root")
     md = extract_full_md_from_zip(buf.getvalue())
     assert md == "# root"
+
+
+def test_extract_full_md_from_zip_empty() -> None:
+    """An empty full.md is an OCR failure signature and must raise."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("full.md", "  \n")
+    with pytest.raises(MinerUError, match="为空"):
+        extract_full_md_from_zip(buf.getvalue())
 
 
 def test_convert_ocr_uses_mineru(tmp_path: Path) -> None:
@@ -197,4 +222,22 @@ def test_ocr_failed_raises_error_no_fallback(tmp_path: Path) -> None:
         with pytest.raises(Pdf2mdError, match="MinerU"):
             convert(pdf, out, ocr=True)
 
+    assert not out.exists()
+
+
+def test_ocr_unexpected_exception_wrapped(tmp_path: Path) -> None:
+    """Non-MinerUError exceptions from the OCR pipeline must surface as
+    Pdf2mdError with the original type named, not as a raw traceback."""
+    pdf = _make_emptyish_pdf(tmp_path / "scan.pdf")
+    out = tmp_path / "scan.md"
+
+    with (
+        patch("pdf2md.fallback.load_mineru_config") as load_cfg,
+        patch("pdf2md.fallback.parse_pdf", side_effect=RuntimeError("boom")) as parse,
+    ):
+        load_cfg.return_value = MagicMock()
+        with pytest.raises(Pdf2mdError, match="RuntimeError"):
+            convert(pdf, out, ocr=True)
+
+    parse.assert_called_once()
     assert not out.exists()

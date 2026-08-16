@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import io
+import sys
 import time
-import warnings
 import zipfile
 from pathlib import Path
 
@@ -205,11 +205,10 @@ def _extract_images(data: bytes, output_dir: Path) -> None:
 
     The ZIP nests each file's assets under one per-file folder; that top
     folder is dropped so the markdown's relative ``images/...`` links
-    resolve. Failures only warn — image extraction is a side effect and
-    must not sink an otherwise successful conversion.
+    resolve. Failures are reported on stderr — image extraction is a side
+    effect and must not sink an otherwise successful conversion.
     """
     img_dir = Path(output_dir)
-    print(f"提取 MinerU 图片到 {img_dir}")
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             for name in archive.namelist():
@@ -223,8 +222,8 @@ def _extract_images(data: bytes, output_dir: Path) -> None:
                 target = img_dir.joinpath(*parts)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(archive.read(name))
-    except (OSError, zipfile.BadZipFile) as e:
-        warnings.warn(f"提取 MinerU 图片失败: {e}", RuntimeWarning)
+    except (OSError, zipfile.BadZipFile, RuntimeError) as e:
+        print(f"提取 MinerU 图片失败: {e}", file=sys.stderr)
 
 
 def extract_full_md_from_zip(data: bytes) -> str:
@@ -238,9 +237,11 @@ def extract_full_md_from_zip(data: bytes) -> str:
                 depth = name.count("/")
                 if best is None or depth < best[0]:
                     best = (depth, content)
-    except zipfile.BadZipFile as e:
+    except (zipfile.BadZipFile, RuntimeError) as e:
         raise MinerUError(f"解压 MinerU ZIP 失败: {e}") from e
 
     if best is None:
         raise MinerUError("MinerU ZIP 中未找到 full.md")
+    if not best[1].strip():
+        raise MinerUError("MinerU 解析结果 full.md 为空")
     return best[1]
