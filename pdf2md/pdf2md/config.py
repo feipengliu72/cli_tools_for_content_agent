@@ -1,8 +1,9 @@
-"""Load provider API config from the cli_tools repo config.json."""
+"""Load provider API config from the running Python environment's config.json."""
 
 from __future__ import annotations
 
 import json
+import sysconfig
 from pathlib import Path
 
 DEFAULT_MINERU_BASE_URL = "https://mineru.net"
@@ -27,24 +28,15 @@ class MinerUConfig:
         self.poll_timeout_secs = poll_timeout_secs
 
 
-def repo_root() -> Path:
-    """cli_tools_for_content_agent/ when running from the source tree."""
-    return Path(__file__).resolve().parents[2]
-
-
 def config_path() -> Path:
-    """Locate config.json by walking up from this file, then from CWD."""
-    starts = [Path(__file__).resolve().parent, Path.cwd()]
-    seen: set[Path] = set()
-    for start in starts:
-        for directory in [start, *start.parents]:
-            if directory in seen:
-                continue
-            seen.add(directory)
-            candidate = directory / "config.json"
-            if candidate.is_file():
-                return candidate
-    return repo_root() / "config.json"
+    """Fixed config location: <python environment Lib>/config.json.
+
+    pdf2md is installed into the content-agent Python runtime, so the
+    config lives with that runtime (e.g. ``runtime/Lib/config.json``).
+    The location follows the environment the package is imported from —
+    it never depends on the CWD or on a source checkout.
+    """
+    return Path(sysconfig.get_path("stdlib")) / "config.json"
 
 
 def load_raw_config(path: Path | None = None) -> dict:
