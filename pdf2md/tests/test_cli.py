@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import sysconfig
 import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -13,7 +14,7 @@ import pytest
 from typer.testing import CliRunner
 
 from pdf2md.cli import app
-from pdf2md.config import load_mineru_config
+from pdf2md.config import config_path, load_mineru_config
 from pdf2md.core import Pdf2mdError, convert, extract_text
 from pdf2md.mineru import MinerUError, extract_full_md_from_zip
 from pdf2md.quality import is_pdf_text_insufficient
@@ -127,6 +128,12 @@ def test_load_mineru_config_from_file(tmp_path: Path) -> None:
     loaded = load_mineru_config(cfg)
     assert loaded.api_key == "tok-123"
     assert loaded.api_base == "https://example.test"
+
+
+def test_config_path_is_fixed_runtime_lib() -> None:
+    """config.json must resolve to the running environment's Lib dir,
+    independent of CWD and source checkout."""
+    assert config_path() == Path(sysconfig.get_path("stdlib")) / "config.json"
 
 
 def test_load_mineru_config_missing_key(tmp_path: Path) -> None:

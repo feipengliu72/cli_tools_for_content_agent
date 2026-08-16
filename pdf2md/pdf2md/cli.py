@@ -35,7 +35,7 @@ def main(
     """将 PDF 文件转换为 Markdown 文本并保存到指定路径。
 
     默认使用 MinerU OCR 解析；OCR 失败时直接报错退出（不再回退到本地解析）
-    （API 从仓库根目录 config.json 的 providers.mineru 读取）。
+    （API 从 Python 运行环境 Lib 目录下 config.json 的 providers.mineru 读取）。
     """
 
     try:
