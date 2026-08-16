@@ -145,7 +145,7 @@ def test_extract_full_md_from_zip() -> None:
     assert md == "# root"
 
 
-def test_convert_ocr_fallback_uses_mineru(tmp_path: Path) -> None:
+def test_convert_ocr_uses_mineru(tmp_path: Path) -> None:
     pdf = _make_emptyish_pdf(tmp_path / "scan.pdf")
     out = tmp_path / "scan.md"
     cfg = tmp_path / "config.json"
@@ -180,30 +180,21 @@ def test_convert_no_ocr_keeps_local(tmp_path: Path) -> None:
 
 
 
-def test_ocr_failed_falls_back_to_local(tmp_path: Path) -> None:
-    pdf = _make_pdf(tmp_path / "blank.pdf",
+def test_ocr_failed_raises_error_no_fallback(tmp_path: Path) -> None:
+    """OCR failure now raises Pdf2mdError directly (local fallback disabled).
+
+    Even when the PDF has extractable local text, the error must surface
+    and no output file may be written.
+    """
+    pdf = _make_pdf(tmp_path / "scan.pdf",
                     "Some text that can be extracted locally and is long enough to pass quality check")
-    out = tmp_path / "blank.md"
+    out = tmp_path / "scan.md"
 
     with patch(
         "pdf2md.fallback.load_mineru_config",
         side_effect=ValueError("config.json 中未配置 providers.mineru.api_key"),
     ):
-        result = convert(pdf, out, ocr=True)
-
-    assert result["parser"] == "local"
-    assert result["fallback_reason"] == "ocr_failed_fallback_to_local"
-    assert out.exists()
-
-
-def test_both_ocr_and_local_fail(tmp_path: Path) -> None:
-    """When OCR errors and local text is insufficient → Pdf2mdError."""
-    pdf = _make_emptyish_pdf(tmp_path / "blank.pdf")
-    out = tmp_path / "blank.md"
-
-    with patch(
-        "pdf2md.fallback.load_mineru_config",
-        side_effect=ValueError("config.json 中未配置 providers.mineru.api_key"),
-    ):
-        with pytest.raises(Pdf2mdError, match="本地解析文本不足"):
+        with pytest.raises(Pdf2mdError, match="MinerU"):
             convert(pdf, out, ocr=True)
+
+    assert not out.exists()

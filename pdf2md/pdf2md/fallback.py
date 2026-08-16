@@ -1,4 +1,4 @@
-"""OCR-first strategy; fall back to local parsing when OCR fails."""
+"""OCR-first strategy; local parsing when OCR is disabled via --no-ocr."""
 
 from __future__ import annotations
 
@@ -20,18 +20,15 @@ def extract_text(
     ocr: bool = True,
     output_dir: Path | None = None,
 ) -> tuple[str, dict]:
-    """Extract Markdown from PDF with OCR-first fallback strategy.
+    """Extract Markdown from PDF with OCR-first strategy.
 
-    Returns ``(text, meta)`` where meta contains ``parser`` and optionally
-    ``fallback_reason``.
+    Returns ``(text, meta)`` where meta contains ``parser``.
 
-    - Default: MinerU OCR first; fall back to local PyMuPDF on OCR error.
+    - Default: MinerU OCR; OCR failure raises Pdf2mdError directly
+      (fallback to local parsing is currently disabled).
     - ``ocr=False``: local only (``--no-ocr``).
     - ``output_dir``: if set, MinerU ZIP images are extracted to
       ``<output_dir>/images/``.
-
-    Raises Pdf2mdError when OCR fails and local extraction is also
-    insufficient.
     """
     path = Path(path)
 
@@ -41,16 +38,8 @@ def extract_text(
         return local_text, {"parser": "local"}
 
     # --- OCR-first strategy ------------------------------------------------
-    try:
-        return _run_mineru(path, output_dir=output_dir)
-    except Pdf2mdError:
-        # MinerU failed → fall back to local; error if local is also bad.
-        local_text = extract_text_local(path)
-        _ensure_local_quality(local_text, path, ocr_attempted=True)
-        return local_text, {
-            "parser": "local",
-            "fallback_reason": "ocr_failed_fallback_to_local",
-        }
+    # 回退到本地解析的逻辑暂时关闭：OCR 失败时直接抛出错误。
+    return _run_mineru(path, output_dir=output_dir)
 
 
 def _ensure_local_quality(
