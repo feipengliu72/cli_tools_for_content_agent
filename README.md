@@ -4,7 +4,7 @@
 
 ## pdf2md
 
-将 PDF 转为 Markdown。默认使用 MinerU OCR 解析（API 读自 Python 运行环境 Lib 目录下的 `config.json`，如 `runtime/Lib/config.json`）；OCR 失败直接报错退出，可用 `--no-ocr` 仅本地解析。
+将 PDF 转为 Markdown。默认使用 MinerU OCR 解析（API 读自 Python 运行环境 Lib 目录下的 `config.json`，如 `runtime/Lib/config.json`）；OCR 失败直接报错退出，可用 `--no-ocr` 仅本地解析。OCR 进度（上传、排队等待心跳）打印到 stderr，stdout 仅输出 JSON 结果。
 
 ### 用法
 

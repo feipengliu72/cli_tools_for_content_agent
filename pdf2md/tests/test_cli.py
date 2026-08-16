@@ -14,9 +14,14 @@ import pytest
 from typer.testing import CliRunner
 
 from pdf2md.cli import app
-from pdf2md.config import config_path, load_mineru_config
+from pdf2md.config import MinerUConfig, config_path, load_mineru_config
 from pdf2md.core import Pdf2mdError, convert, extract_text
-from pdf2md.mineru import MinerUError, extract_full_md_from_zip
+from pdf2md.mineru import (
+    MinerUError,
+    _poll_batch_result,
+    _upload_file,
+    extract_full_md_from_zip,
+)
 from pdf2md.quality import is_pdf_text_insufficient
 
 runner = CliRunner()
@@ -248,3 +253,92 @@ def test_ocr_unexpected_exception_wrapped(tmp_path: Path) -> None:
 
     parse.assert_called_once()
     assert not out.exists()
+
+
+def _fake_resp(payload: dict) -> MagicMock:
+    resp = MagicMock()
+    resp.json.return_value = payload
+    resp.status_code = 200
+    resp.text = ""
+    return resp
+
+
+def _poll_payload(state: str, **extra: object) -> dict:
+    item: dict = {"file_name": "a.pdf", "state": state}
+    item.update(extra)
+    return {"code": 0, "data": {"extract_result": [item]}}
+
+
+def test_upload_progress_lines(tmp_path: Path) -> None:
+    """Upload step reports file size before PUT and completion after."""
+    pdf = tmp_path / "a.pdf"
+    pdf.write_bytes(b"x" * 100)
+    client = MagicMock()
+    client.put.return_value = _fake_resp({})
+    lines: list[str] = []
+
+    _upload_file(client, pdf, "https://up.test", progress_cb=lines.append)
+
+    assert lines[0].startswith("上传 PDF（")
+    assert lines[-1] == "上传完成，等待 MinerU 解析"
+
+
+def test_poll_waiting_heartbeat_every_10s() -> None:
+    """Queue waits print a heartbeat roughly every 10 seconds; tasks
+    finishing quickly stay silent apart from the upload node."""
+    client = MagicMock()
+    client.get.side_effect = [
+        _fake_resp(_poll_payload("waiting-file")),
+        _fake_resp(_poll_payload("waiting-file")),
+        _fake_resp(_poll_payload("waiting-file")),
+        _fake_resp(_poll_payload("waiting-file")),
+        _fake_resp(_poll_payload("done", full_zip_url="https://z.test")),
+    ]
+    lines: list[str] = []
+    clock = [
+        1000.0,  # deadline
+        1000.0,  # start
+        1001.0,  # poll 1 (silent)
+        1004.0,  # poll 2 (silent)
+        1011.0,  # poll 3 (first heartbeat)
+        1021.0,  # poll 4 (second heartbeat)
+        1031.0,  # poll 5 (done, no heartbeat)
+    ]
+
+    with (
+        patch("pdf2md.mineru.time.sleep"),
+        patch("pdf2md.mineru.time.monotonic", side_effect=clock),
+    ):
+        zip_url = _poll_batch_result(
+            client,
+            MinerUConfig("tok"),
+            "b1",
+            "a.pdf",
+            progress_cb=lines.append,
+        )
+
+    assert zip_url == "https://z.test"
+    assert lines == ["等待解析（已用 11s）", "等待解析（已用 21s）"]
+
+
+def test_cli_ocr_progress_goes_to_stderr(tmp_path: Path) -> None:
+    """Progress lines land on stderr; stdout stays a pure JSON result."""
+    pdf = _make_emptyish_pdf(tmp_path / "scan.pdf")
+    out = tmp_path / "scan.md"
+
+    def fake_parse(path, config, output_dir=None, progress_cb=None):
+        if progress_cb is not None:
+            progress_cb("上传 PDF（0.0 MB）...")
+        return "# OCR result\n"
+
+    with (
+        patch("pdf2md.fallback.load_mineru_config") as load_cfg,
+        patch("pdf2md.fallback.parse_pdf", side_effect=fake_parse),
+    ):
+        load_cfg.return_value = MagicMock()
+        result = runner.invoke(app, ["--input", str(pdf), "--output", str(out)])
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["ok"] is True
+    assert "上传 PDF" in result.stderr
+    assert "上传 PDF" not in result.stdout
