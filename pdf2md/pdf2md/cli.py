@@ -17,6 +17,11 @@ app = typer.Typer(
 )
 
 
+def _progress_to_stderr(msg: str) -> None:
+    """Progress sink for the CLI: stderr keeps stdout a pure JSON result."""
+    typer.echo(msg, err=True)
+
+
 @app.command()
 def main(
     input: Annotated[
@@ -36,6 +41,7 @@ def main(
 
     默认使用 MinerU OCR 解析；OCR 失败时直接报错退出（不再回退到本地解析）
     （API 从 Python 运行环境 Lib 目录下 config.json 的 providers.mineru 读取）。
+    OCR 进度信息打印到 stderr，stdout 仅输出 JSON 结果。
     """
 
     try:
@@ -43,6 +49,7 @@ def main(
             input,
             output,
             ocr=not no_ocr,
+            progress_cb=_progress_to_stderr,
         )
     except Pdf2mdError as e:
         typer.echo(str(e), err=True)

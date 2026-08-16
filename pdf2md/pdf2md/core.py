@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 
 import fitz
@@ -576,12 +577,16 @@ def convert(
     output_path: Path,
     *,
     ocr: bool = True,
+    progress_cb: Callable[[str], None] | None = None,
 ) -> dict:
     """Extract PDF text and write it to output_path. Returns a result dict.
 
-    OCR-first strategy (MinerU via repo config.json): try OCR by default;
-    OCR failure raises Pdf2mdError (no local fallback). Use ``ocr=False``
-    for ``--no-ocr``.
+    OCR-first strategy (MinerU via runtime config.json): try OCR by
+    default; OCR failure raises Pdf2mdError (no local fallback). Use
+    ``ocr=False`` for ``--no-ocr``.
+
+    ``progress_cb``, when set, receives one-line progress messages from
+    the MinerU OCR path.
     """
     from pdf2md.fallback import extract_text as extract_with_fallback
 
@@ -592,6 +597,7 @@ def convert(
         input_path,
         ocr=ocr,
         output_dir=output_path.parent.resolve(),
+        progress_cb=progress_cb,
     )
 
     try:

@@ -6,6 +6,7 @@ import io
 import sys
 import time
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx
@@ -18,12 +19,18 @@ class MinerUError(Exception):
 
 
 def parse_pdf(
-    path: Path, config: MinerUConfig, output_dir: Path | None = None
+    path: Path,
+    config: MinerUConfig,
+    output_dir: Path | None = None,
+    progress_cb: Callable[[str], None] | None = None,
 ) -> str:
     """Upload PDF to MinerU, wait for parse, return Markdown text.
 
     When ``output_dir`` is given, image files from the result ZIP are
     extracted to ``<output_dir>/images/``.
+
+    ``progress_cb``, when set, receives one-line progress messages
+    (upload node and waiting heartbeats).
     """
     path = Path(path)
     file_name = path.name
@@ -33,8 +40,10 @@ def parse_pdf(
     timeout = httpx.Timeout(120.0, connect=30.0)
     with httpx.Client(timeout=timeout) as client:
         batch_id, upload_url = _request_upload_url(client, config, file_name)
-        _upload_file(client, path, upload_url)
-        zip_url = _poll_batch_result(client, config, batch_id, file_name)
+        _upload_file(client, path, upload_url, progress_cb=progress_cb)
+        zip_url = _poll_batch_result(
+            client, config, batch_id, file_name, progress_cb=progress_cb
+        )
         return _download_and_extract_md(client, zip_url, output_dir)
 
 
@@ -96,11 +105,19 @@ def _request_upload_url(
     return batch_id, upload_url
 
 
-def _upload_file(client: httpx.Client, path: Path, upload_url: str) -> None:
+def _upload_file(
+    client: httpx.Client,
+    path: Path,
+    upload_url: str,
+    progress_cb: Callable[[str], None] | None = None,
+) -> None:
     try:
         raw = path.read_bytes()
     except OSError as e:
         raise MinerUError(f"读取 PDF 文件失败: {e}") from e
+
+    if progress_cb is not None:
+        progress_cb(f"上传 PDF（{len(raw) / 1048576:.1f} MB）...")
 
     try:
         resp = client.put(upload_url, content=raw)
@@ -111,19 +128,26 @@ def _upload_file(client: httpx.Client, path: Path, upload_url: str) -> None:
         body = (resp.text or "")[:200]
         raise MinerUError(f"MinerU 上传文件失败: HTTP {resp.status_code} {body}")
 
+    if progress_cb is not None:
+        progress_cb("上传完成，等待 MinerU 解析")
+
 
 def _poll_batch_result(
     client: httpx.Client,
     config: MinerUConfig,
     batch_id: str,
     file_name: str,
+    progress_cb: Callable[[str], None] | None = None,
 ) -> str:
     url = f"{config.api_base}/api/v4/extract-results/batch/{batch_id}"
     deadline = time.monotonic() + max(config.poll_timeout_secs, 1)
     interval = max(config.poll_interval_ms, 100) / 1000.0
+    start = time.monotonic()
+    last_bucket = 0  # 已打印过的 10 秒时间桶
 
     while True:
-        if time.monotonic() >= deadline:
+        now = time.monotonic()
+        if now >= deadline:
             raise MinerUError(f"MinerU 解析超时（{config.poll_timeout_secs} 秒）")
 
         try:
@@ -161,6 +185,8 @@ def _poll_batch_result(
             raise MinerUError("MinerU 响应中无任务结果")
 
         state = item.get("state") or "unknown"
+        if progress_cb is not None and state not in ("done", "failed"):
+            last_bucket = _report_waiting(progress_cb, now - start, last_bucket)
         if state == "done":
             zip_url = item.get("full_zip_url")
             if not isinstance(zip_url, str) or not zip_url:
@@ -179,6 +205,25 @@ def _poll_batch_result(
             time.sleep(interval)
             continue
         raise MinerUError(f"MinerU 未知任务状态: {state}")
+
+
+def _report_waiting(
+    progress_cb: Callable[[str], None],
+    elapsed: float,
+    last_bucket: int,
+) -> int:
+    """Print a heartbeat line every ~10s while the task is not done.
+
+    The poll response only reports waiting-file / pending / done — it
+    never exposes ``running`` or per-page progress — so the queue wait
+    is the only phase worth reporting. Tasks that finish within 10s
+    stay silent apart from the upload node.
+    """
+    bucket = int(elapsed) // 10
+    if bucket == last_bucket:
+        return last_bucket
+    progress_cb(f"等待解析（已用 {int(elapsed)}s）")
+    return bucket
 
 
 def _download_and_extract_md(

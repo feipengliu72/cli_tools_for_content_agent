@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from pdf2md.config import load_mineru_config
@@ -19,6 +20,7 @@ def extract_text(
     *,
     ocr: bool = True,
     output_dir: Path | None = None,
+    progress_cb: Callable[[str], None] | None = None,
 ) -> tuple[str, dict]:
     """Extract Markdown from PDF with OCR-first strategy.
 
@@ -29,6 +31,7 @@ def extract_text(
     - ``ocr=False``: local only (``--no-ocr``).
     - ``output_dir``: if set, MinerU ZIP images are extracted to
       ``<output_dir>/images/``.
+    - ``progress_cb``: optional one-line progress sink for the OCR path.
     """
     path = Path(path)
 
@@ -39,7 +42,7 @@ def extract_text(
 
     # --- OCR-first strategy ------------------------------------------------
     # 回退到本地解析的逻辑暂时关闭：OCR 失败时直接抛出错误。
-    return _run_mineru(path, output_dir=output_dir)
+    return _run_mineru(path, output_dir=output_dir, progress_cb=progress_cb)
 
 
 def _ensure_local_quality(
@@ -56,13 +59,14 @@ def _ensure_local_quality(
 def _run_mineru(
     path: Path,
     output_dir: Path | None = None,
+    progress_cb: Callable[[str], None] | None = None,
 ) -> tuple[str, dict]:
     try:
         config = load_mineru_config()
     except ValueError as e:
         raise Pdf2mdError(f"MinerU 配置错误: {e}") from e
     try:
-        md = parse_pdf(path, config, output_dir=output_dir)
+        md = parse_pdf(path, config, output_dir=output_dir, progress_cb=progress_cb)
     except MinerUError as e:
         raise Pdf2mdError(f"MinerU OCR 失败: {e}") from e
     except Exception as e:  # noqa: BLE001 — 非预期异常同样转为领域错误，保证 CLI 打印完整信息
