@@ -48,13 +48,20 @@ def config_path() -> Path:
 
 
 def load_raw_config(path: Path | None = None) -> dict:
+    """Read config.json raw content.
+
+    A missing file yields ``{}``; a read / JSON parse failure raises
+    ValueError so the real cause is never silently masked as "not configured".
+    """
     cfg_path = path or config_path()
     if not cfg_path.exists():
         return {}
     try:
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+    except OSError as e:
+        raise ValueError(f"读取 config.json 失败（{cfg_path}）: {e}") from e
+    except json.JSONDecodeError as e:
+        raise ValueError(f"config.json JSON 解析失败（{cfg_path}）: {e}") from e
     return data if isinstance(data, dict) else {}
 
 
@@ -65,8 +72,13 @@ def get_provider_config(provider_name: str, path: Path | None = None) -> dict[st
     if not isinstance(providers, dict):
         return {}
     entry = providers.get(provider_name)
-    if not isinstance(entry, dict):
+    if entry is None:
         return {}
+    if not isinstance(entry, dict):
+        raise ValueError(
+            f"config.json 中 providers.{provider_name} 配置必须是对象"
+            f"（当前为 {type(entry).__name__}）"
+        )
     result: dict[str, str] = {}
     api_key = entry.get("api_key")
     if isinstance(api_key, str) and api_key.strip():

@@ -567,7 +567,7 @@ def extract_text_local(path: Path) -> str:
 
 
 def extract_text(path: Path) -> str:
-    """Extract Markdown from a PDF (local parse; callers needing OCR use fallback)."""
+    """Extract Markdown from a PDF (local parse only)."""
     return extract_text_local(path)
 
 
@@ -580,7 +580,7 @@ def convert(
     """Extract PDF text and write it to output_path. Returns a result dict.
 
     OCR-first strategy (MinerU via repo config.json): try OCR by default;
-    fall back to local PyMuPDF parsing on OCR failure. Use ``ocr=False``
+    OCR failure raises Pdf2mdError (no local fallback). Use ``ocr=False``
     for ``--no-ocr``.
     """
     from pdf2md.fallback import extract_text as extract_with_fallback
@@ -601,13 +601,10 @@ def convert(
     except OSError as e:
         raise Pdf2mdError(f"写入输出文件失败: {e}") from e
 
-    result = {
+    return {
         "ok": True,
         "input": str(input_path),
         "output": str(output_path),
         "chars": len(text),
         "parser": meta.get("parser", "local"),
     }
-    if meta.get("fallback_reason"):
-        result["fallback_reason"] = meta["fallback_reason"]
-    return result
