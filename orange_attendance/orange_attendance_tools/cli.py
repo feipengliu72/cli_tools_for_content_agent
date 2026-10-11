@@ -50,8 +50,10 @@ def day(
     """查询指定日期的全员考勤状态并写入 YAML 文件。"""
     date_value = _validate_date(date_value)
     resolved_team_id = require_team_id(team_id)
-    response = fetch_day(date_value, resolved_team_id, load_cookies())
-    payload = transform_day(response, resolved_team_id, date_value)
+    cookies = load_cookies()
+    response = fetch_day(date_value, resolved_team_id, cookies)
+    grid_records = fetch_grid(date_value[:7], resolved_team_id, "", cookies)
+    payload = transform_day(response, grid_records, resolved_team_id, date_value)
     write_yaml(payload, output)
     _emit_result("orange-attendance day", output, payload["record_count"], payload["query"])
 

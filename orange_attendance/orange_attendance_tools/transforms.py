@@ -32,11 +32,49 @@ def _punch(record: dict[str, Any], sequence: int, direction: str) -> dict[str, A
     }
 
 
-def transform_day(response: dict[str, Any], team_id: str, date: str) -> dict[str, Any]:
+def _daily_status(
+    punches: list[dict[str, Any]], grid_record: dict[str, Any], day: int
+) -> dict[str, Any]:
+    grid_in = _text(grid_record.get(f"{day}号上班"))
+    grid_out = _text(grid_record.get(f"{day}号下班"))
+    values = [
+        value
+        for value in [grid_in, grid_out, *(punch["status"] for punch in punches)]
+        if value is not None
+    ]
+
+    return {
+        "grid_in": grid_in,
+        "grid_out": grid_out,
+        "is_leave": any("请假" in value for value in values),
+        "is_late": any("迟到" in value for value in values),
+        "is_leave_early": any("早退" in value for value in values),
+        "is_missing_punch": any("缺卡" in value for value in values),
+        "is_rest": any("休息" in value for value in values),
+        "is_outing": any("外出" in value for value in values),
+        "is_travelling": any("出差" in value for value in values),
+        "is_overtime": any("加班" in value for value in values),
+    }
+
+
+def transform_day(
+    response: dict[str, Any], grid_records: list[dict[str, Any]], team_id: str, date: str
+) -> dict[str, Any]:
     summary = response.get("stat")
     records = response.get("list")
     if not isinstance(summary, dict) or not isinstance(records, list):
         raise ValueError("day 接口响应缺少 stat 或 list")
+
+    grid_by_employee_id: dict[str, dict[str, Any]] = {}
+    for grid_record in grid_records:
+        if not isinstance(grid_record, dict):
+            raise ValueError("grid 接口的人员记录格式无效")
+        grid_employee_id = _identifier(grid_record.get("userId"))
+        if grid_employee_id is None:
+            raise ValueError("grid 接口返回了缺少人员编号的记录")
+        grid_by_employee_id[grid_employee_id] = grid_record
+
+    day = int(date.rsplit("-", 1)[1])
 
     employees = []
     for record in records:
@@ -45,6 +83,15 @@ def transform_day(response: dict[str, Any], team_id: str, date: str) -> dict[str
         employee_id = _identifier(record.get("userId")) or _identifier(record.get("userId2"))
         if employee_id is None:
             raise ValueError("day 接口返回了缺少人员编号的记录")
+        grid_record = grid_by_employee_id.get(employee_id)
+        if grid_record is None:
+            raise ValueError(f"grid 接口缺少人员编号为 {employee_id} 的记录")
+        punches = [
+            _punch(record, 1, "in"),
+            _punch(record, 1, "out"),
+            _punch(record, 2, "in"),
+            _punch(record, 2, "out"),
+        ]
         employees.append(
             {
                 "employee_id": employee_id,
@@ -52,12 +99,8 @@ def transform_day(response: dict[str, Any], team_id: str, date: str) -> dict[str
                 "department_id": _identifier(record.get("deptId")),
                 "department_name": _text(record.get("deptName")),
                 "record_date": _text(record.get("recDate")),
-                "punches": [
-                    _punch(record, 1, "in"),
-                    _punch(record, 1, "out"),
-                    _punch(record, 2, "in"),
-                    _punch(record, 2, "out"),
-                ],
+                "daily_status": _daily_status(punches, grid_record, day),
+                "punches": punches,
             }
         )
 

@@ -61,6 +61,7 @@ def call(path: str, payload: dict[str, object], cookies: dict[str, str]) -> obje
         timeout=30,
     )
     response.raise_for_status()
+    response.encoding = "utf-8"
     result = response.json()
     state = result.get("state")
     if state in ERROR_STATES:
