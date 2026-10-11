@@ -63,6 +63,6 @@ orange-attendance stat `
 
 `grid` 与 `stat` 支持 `--department-id`。三个命令都支持 `--team-id`，该参数会覆盖 `ORANGE_TEAM_ID`。可执行 `orange-attendance --help` 查看完整参数。
 
-命令成功后标准输出返回 JSON，包含输出文件绝对路径、查询参数和记录数量。数据写入 UTF-8 YAML 文件；`output/` 已加入忽略规则。`day` 的每位员工记录包含 `daily_status`：原始网格状态 `grid_in`、`grid_out`，以及 `is_leave`、`is_late`、`is_leave_early`、`is_missing_punch`、`is_rest`、`is_outing`、`is_travelling`、`is_overtime` 标记。
+命令成功后标准输出返回 JSON，包含输出文件绝对路径、查询参数和记录数量。数据写入 UTF-8 YAML 文件；`output/` 已加入忽略规则。`day` 文件仅包含员工记录列表：人员编号、姓名、部门、记录日期和 `daily_status`。`daily_status` 提供原始网格状态 `grid_in`、`grid_out`，以及 `is_leave`、`is_late`、`is_leave_early`、`is_missing_punch`、`is_rest`、`is_outing`、`is_travelling`、`is_overtime` 标记。
 
 YAML 文件仅包含考勤需要的人员编号、姓名、部门、打卡时间、考勤状态、考勤汇总及月度统计。Cookie、定位、手机号、头像、图片地址和设备标识不会写入文件。

@@ -39,4 +39,4 @@ orange-attendance day --date 2026-10-10 --output .\output\attendance-day-2026-10
 
 Cookie 属于敏感凭据，请勿提交到仓库。完整的安装方式、macOS/Linux 调用路径和 `grid`、`stat` 命令参数见 [orange_attendance/README.md](orange_attendance/README.md)。
 
-`day` 输出中的每位员工均包含 `daily_status`，其中提供请假、迟到、早退、缺卡、休息、外出、出差、加班标记，以及当天网格中的原始上下班状态。
+`day` 文件仅包含员工编号、姓名、部门、记录日期和 `daily_status`。`daily_status` 提供请假、迟到、早退、缺卡、休息、外出、出差、加班标记，以及当天网格中的原始上下班状态。

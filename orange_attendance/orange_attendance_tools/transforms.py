@@ -58,12 +58,11 @@ def _daily_status(
 
 
 def transform_day(
-    response: dict[str, Any], grid_records: list[dict[str, Any]], team_id: str, date: str
-) -> dict[str, Any]:
-    summary = response.get("stat")
+    response: dict[str, Any], grid_records: list[dict[str, Any]], date: str
+) -> list[dict[str, Any]]:
     records = response.get("list")
-    if not isinstance(summary, dict) or not isinstance(records, list):
-        raise ValueError("day 接口响应缺少 stat 或 list")
+    if not isinstance(records, list):
+        raise ValueError("day 接口响应缺少 list")
 
     grid_by_employee_id: dict[str, dict[str, Any]] = {}
     for grid_record in grid_records:
@@ -100,30 +99,10 @@ def transform_day(
                 "department_name": _text(record.get("deptName")),
                 "record_date": _text(record.get("recDate")),
                 "daily_status": _daily_status(punches, grid_record, day),
-                "punches": punches,
             }
         )
 
-    return {
-        "source": "orange-office",
-        "query": {"type": "day", "team_id": team_id, "date": date},
-        "retrieved_at": retrieved_at(),
-        "record_count": len(employees),
-        "summary": {
-            "late": summary.get("late", 0),
-            "leave_early": summary.get("leaveEarly", 0),
-            "leave": summary.get("vacate", 0),
-            "outing": summary.get("outing", 0),
-            "travelling": summary.get("travelling", 0),
-            "overtime": summary.get("overtime", 0),
-            "rest": summary.get("rest", 0),
-            "in_lack": summary.get("inLack", 0),
-            "out_lack": summary.get("outLack", 0),
-            "in_buka": summary.get("inBuka", 0),
-            "out_buka": summary.get("outBuka", 0),
-        },
-        "employees": employees,
-    }
+    return employees
 
 
 def transform_grid(records: list[dict[str, Any]], team_id: str, month: str, department_id: str) -> dict[str, Any]:

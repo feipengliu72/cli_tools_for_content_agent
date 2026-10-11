@@ -53,9 +53,14 @@ def day(
     cookies = load_cookies()
     response = fetch_day(date_value, resolved_team_id, cookies)
     grid_records = fetch_grid(date_value[:7], resolved_team_id, "", cookies)
-    payload = transform_day(response, grid_records, resolved_team_id, date_value)
+    payload = transform_day(response, grid_records, date_value)
     write_yaml(payload, output)
-    _emit_result("orange-attendance day", output, payload["record_count"], payload["query"])
+    _emit_result(
+        "orange-attendance day",
+        output,
+        len(payload),
+        {"type": "day", "team_id": resolved_team_id, "date": date_value},
+    )
 
 
 @app.command()

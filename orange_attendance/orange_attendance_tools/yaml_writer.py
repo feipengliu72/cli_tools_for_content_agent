@@ -25,7 +25,7 @@ def _quote_strings(value: Any) -> Any:
     return value
 
 
-def write_yaml(payload: dict[str, Any], output: Path) -> None:
+def write_yaml(payload: Any, output: Path) -> None:
     if output.suffix.lower() not in {".yaml", ".yml"}:
         raise ValueError("--output 必须使用 .yaml 或 .yml 扩展名")
     output.parent.mkdir(parents=True, exist_ok=True)
