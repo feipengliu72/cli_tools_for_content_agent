@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "orange-attendance-tools"
+version = "0.1.0"
+description = "橙子办公考勤数据 YAML 命令行工具"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.34",
+    "PyYAML>=6.0",
+    "typer>=0.12",
+]
+
+[project.scripts]
+orange-attendance = "orange_attendance_tools.cli:app"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["orange_attendance_tools"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

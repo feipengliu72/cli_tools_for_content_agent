@@ -1,0 +1,6 @@
+_work/
+_sessions/
+.venv/
+__pycache__/
+.session
+output/
