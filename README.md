@@ -14,3 +14,27 @@ pip install -e .
 pdf2md --input in.pdf --output out.md
 pdf2md --input in.pdf --output out.md --no-ocr
 ```
+
+## orange_attendance
+
+读取橙子办公考勤数据并输出 UTF-8 YAML 文件。需要 Python 3.10 或更高版本，以及可访问橙子办公的有效账号会话。
+
+### 用法
+
+```bash
+cd orange_attendance
+python -m venv .venv
+# Windows PowerShell：.\.venv\Scripts\Activate.ps1
+# macOS/Linux：source .venv/bin/activate
+python -m pip install .
+```
+
+调用前请在当前终端设置完整 Cookie 与团队编号：
+
+```powershell
+$env:ORANGE_COOKIE = '完整 Cookie'
+$env:ORANGE_TEAM_ID = '团队编号'
+orange-attendance day --date 2026-10-10 --output .\output\attendance-day-2026-10-10.yaml
+```
+
+Cookie 属于敏感凭据，请勿提交到仓库。完整的安装方式、macOS/Linux 调用路径和 `grid`、`stat` 命令参数见 [orange_attendance/README.md](orange_attendance/README.md)。
